@@ -116,7 +116,7 @@ def updateResponse(givenjson, updatejson, override = False):
             givenjson[key] = updatejson[key]
     return givenjson
 
-def submitDocumentAnalysisJob(bucket, document, tokenPrefix, retryInterval, maxRetryAttempt, topicArn, roleArn, table_name):
+def submitDocumentAnalysisJob(bucket, document, eTag, tokenPrefix, retryInterval, maxRetryAttempt, topicArn, roleArn, table_name):
 
     s3 = boto3.resource('s3')
     textract = boto3.client('textract')
@@ -129,21 +129,23 @@ def submitDocumentAnalysisJob(bucket, document, tokenPrefix, retryInterval, maxR
     document_path = document[:document.rfind("/")] if document.find("/") >= 0 else ""
     document_name = document[document.rfind("/")+1:document.rfind(".")] if document.find("/") >= 0 else document[:document.rfind(".")]
     document_type = document[document.rfind(".")+1:].upper()
+    client_request_token = "{}-{}".format(tokenPrefix, eTag)
+    job_tag = "{}-{}".format(tokenPrefix, eTag)
 
-    print("DocumentAnalysisJob: ClientRequestToken = {}-{}".format(tokenPrefix, document.replace("/","_").replace(".","-")))
+    print("DocumentAnalysisJob: ClientRequestToken = {}".format(client_request_token))
     print("DocumentAnalysisJob: DocumentLocation = 'S3Object': 'Bucket': {}, 'Name': {}".format(bucket, document))
     print("DocumentAnalysisJob: NotificationChannel = 'SNSTopicArn': {},'RoleArn': {}".format(topicArn, roleArn))
-    print("DocumentAnalysisJob: JobTag = {}-{}".format(tokenPrefix, document[document.rfind("/")+1:document.rfind(".")]))
+    print("DocumentAnalysisJob: JobTag = {}".format(job_tag))
             
     #Submit Document Anlysis job to Textract to extract text features    
     while retryCount >= 0 and retryCount < maxRetryAttempt:
         try:
             response = textract.start_document_analysis(
-                                    ClientRequestToken = "{}-{}".format(tokenPrefix, document.replace("/","_").replace(".","-")),
+                                    ClientRequestToken = client_request_token,
                                     DocumentLocation={'S3Object': {'Bucket': bucket, 'Name': document}},
                                     FeatureTypes=["TABLES", "FORMS"],
                                     NotificationChannel={'SNSTopicArn': topicArn,'RoleArn': roleArn},
-                                    JobTag = "{}-{}".format(tokenPrefix, document[document.rfind("/")+1:document.rfind(".")]))
+                                    JobTag = job_tag)
             jobId = response['JobId']
             jobStartTimeStamp = datetime.strptime(response['ResponseMetadata']['HTTPHeaders']['date'], '%a, %d %b %Y %H:%M:%S %Z').timestamp()
             print("Textract Request: {} submitted at {} with JobId - {}".format(
@@ -242,7 +244,7 @@ def submitDocumentAnalysisJob(bucket, document, tokenPrefix, retryInterval, maxR
 
     return jsonresponse
         
-def submitTextDetectionJob(bucket, document, tokenPrefix, retryInterval, maxRetryAttempt, topicArn, roleArn, table_name):
+def submitTextDetectionJob(bucket, document, eTag, tokenPrefix, retryInterval, maxRetryAttempt, topicArn, roleArn, table_name):
 
     s3 = boto3.resource('s3')
     textract = boto3.client('textract')
@@ -255,20 +257,22 @@ def submitTextDetectionJob(bucket, document, tokenPrefix, retryInterval, maxRetr
     document_path = document[:document.rfind("/")] if document.find("/") >= 0 else ""
     document_name = document[document.rfind("/")+1:document.rfind(".")] if document.find("/") >= 0 else document[:document.rfind(".")]
     document_type = document[document.rfind(".")+1:].upper()
-
-    print("TextDetectionsJob: ClientRequestToken = {}-{}".format(tokenPrefix, document.replace("/","_").replace(".","-")))
+    client_request_token = "{}-{}".format(tokenPrefix, eTag)
+    job_tag = "{}-{}".format(tokenPrefix, eTag)
+    
+    print("TextDetectionsJob: ClientRequestToken = {}".format(client_request_token))
     print("TextDetectionJob: DocumentLocation = 'S3Object': 'Bucket': {}, 'Name': {}".format(bucket, document))
     print("TextDetectionJob: NotificationChannel = 'SNSTopicArn': {},'RoleArn': {}".format(topicArn, roleArn))
-    print("TextDetectionJob: JobTag = {}-{}".format(tokenPrefix, document[document.rfind("/")+1:document.rfind(".")]))
+    print("TextDetectionJob: JobTag = {}".format(client_request_token))
     
     #Submit Text Detection job to Textract to detect lines of text    
     while retryCount >= 0 and retryCount < maxRetryAttempt:
         try:
             response = textract.start_document_text_detection(
-                                    ClientRequestToken = "{}-{}".format(tokenPrefix, document.replace("/","_").replace(".","-")),
+                                    ClientRequestToken = client_request_token,
                                     DocumentLocation={'S3Object': {'Bucket': bucket, 'Name': document}},
                                     NotificationChannel={'SNSTopicArn': topicArn,'RoleArn': roleArn},
-                                    JobTag = "{}-{}".format(tokenPrefix, document[document.rfind("/")+1:document.rfind(".")]))
+                                    JobTag = job_tag)
             jobId = response['JobId']
             jobStartTimeStamp = datetime.strptime(response['ResponseMetadata']['HTTPHeaders']['date'], '%a, %d %b %Y %H:%M:%S %Z').timestamp()
             print("Textract Request: {} submitted at {} with JobId - {}".format(
@@ -377,6 +381,7 @@ def lambda_handler(event, context):
     external_bucket = ""
     bucket = ""
     document = ""
+    eTag = ""
     bucketAccessPolicyArn = None
     
     if 'ExternalBucketName' in event:
@@ -388,6 +393,7 @@ def lambda_handler(event, context):
         print(record)
         bucket = record['s3']['bucket']['name']
         document = unquote_plus(record['s3']['object']['key'])
+        eTag = record['s3']['object']['eTag']
     else:
         bucket = event['ExternalBucketName']
         document = event['ExternalDocumentPrefix']   
@@ -396,14 +402,14 @@ def lambda_handler(event, context):
         print("Bucket and/or Document not specified, nothing to do.")
         return {}
 
-    documentAnalysisResponse = submitDocumentAnalysisJob(bucket, document, 
+    documentAnalysisResponse = submitDocumentAnalysisJob(bucket, document, eTag,
                                                         documentAnalysisTokenPrefix, 
                                                         retryInterval, maxRetryAttempt, 
                                                         documentAnalysisTopicArn, 
                                                         roleArn, table_name)
     print("DocumentAnalysisResponse = {}".format(documentAnalysisResponse))
 
-    textDetectionResponse = submitTextDetectionJob(bucket, document, 
+    textDetectionResponse = submitTextDetectionJob(bucket, document, eTag,
                                                     textDetectionTokenPrefix, 
                                                     retryInterval, maxRetryAttempt, 
                                                     textDetectionTopicArn, 
