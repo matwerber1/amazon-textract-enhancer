@@ -2,7 +2,7 @@ import os
 import time
 import boto3
 from datetime import datetime
-
+from urllib.parse import unquote_plus
 
 def attachExternalBucketPolicy(externalBucketName):
     iam = boto3.client('iam')
@@ -387,7 +387,7 @@ def lambda_handler(event, context):
         record, = event["Records"]        
         print(record)
         bucket = record['s3']['bucket']['name']
-        document = record['s3']['object']['key']
+        document = unquote_plus(record['s3']['object']['key'])
     else:
         bucket = event['ExternalBucketName']
         document = event['ExternalDocumentPrefix']   
