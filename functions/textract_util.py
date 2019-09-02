@@ -420,15 +420,18 @@ def extractTextBody(blocks):
     document_text = {}
     for page in blocks['PAGE']:
         document_text['Page-{0:02d}'.format(page['Page'])] = {}
-        print("Page-{} contains {} Lines".format(page['Page'], len(page['Relationships'][0]['Ids'])))
-        total_line += len(page['Relationships'][0]['Ids'])
-        for i, line_id in enumerate(page['Relationships'][0]['Ids']):
-            page_line = None
-            for line in blocks['LINE']:
-                if line['Id'] == line_id:
-                    page_line = line
-                    break
-            document_text['Page-{0:02d}'.format(page['Page'])]['Line-{0:04d}'.format(i+1)] = {}
-            document_text['Page-{0:02d}'.format(page['Page'])]['Line-{0:04d}'.format(i+1)]['Text'] = page_line['Text']
+        if 'Relationships' in page.keys():
+          print("Page-{} contains {} Lines".format(page['Page'], len(page['Relationships'][0]['Ids'])))
+          total_line += len(page['Relationships'][0]['Ids'])
+          for i, line_id in enumerate(page['Relationships'][0]['Ids']):
+              page_line = None
+              for line in blocks['LINE']:
+                  if line['Id'] == line_id:
+                      page_line = line
+                      break
+              document_text['Page-{0:02d}'.format(page['Page'])]['Line-{0:04d}'.format(i+1)] = {}
+              document_text['Page-{0:02d}'.format(page['Page'])]['Line-{0:04d}'.format(i+1)]['Text'] = page_line['Text']
+        else:
+          print("Page-{} contains no lines".format(page['Page']))
     print(total_line)
     return document_text, total_line
